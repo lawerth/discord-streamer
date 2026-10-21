@@ -1,0 +1,9 @@
+version: "3.8"
+
+services:
+  discord-stream-farm:
+    build: .
+    container_name: discord-stream-farm
+    restart: unless-stopped
+    env_file:
+      - .env
