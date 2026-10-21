@@ -9,8 +9,6 @@
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg)](https://www.docker.com/)
 [![WebRTC](https://img.shields.io/badge/Discord-WebRTC%20Stream-5865F2.svg)](https://discord.com)
 
-**Automated 24/7 booster for Discord's progressive Streaming Profile Badge.**
-
 Level up your badge effortlessly with automated audience emulation, ultra-low resource usage, and real-time milestone tracking.
 
 </div>
@@ -67,7 +65,7 @@ Discord features progressive **Activity Badges** that dynamically evolve on user
 Clone the repository and install dependencies:
 
 ```bash
-git clone https://github.com/your-username/discord-streamer.git
+git clone https://github.com/lawerth/discord-streamer.git
 cd discord-streamer
 npm install
 ```

@@ -14,6 +14,7 @@ export async function verifyDiscordToken(token) {
         Authorization: token.trim(),
         "Content-Type": "application/json",
       },
+      signal: AbortSignal.timeout(10000),
     });
 
     if (res.ok) {
@@ -105,14 +106,11 @@ export async function runSetupWizard() {
     `VIEWER_TOKEN=${response.viewerToken.trim()}`,
     `GUILD_ID=${response.guildId.trim()}`,
     `CHANNEL_ID=${response.channelId.trim()}`,
-    `RESOLUTION=720p`,
-    `FPS=1`,
-    `BITRATE_KBPS=50`,
     ``,
   ].join("\n");
 
   const envPath = path.resolve(process.cwd(), ".env");
-  fs.writeFileSync(envPath, envContent, "utf-8");
+  fs.writeFileSync(envPath, envContent, { encoding: "utf-8", mode: 0o600 });
 
   console.log(chalk.green(`\nSaved configuration to .env\n`));
 
@@ -121,7 +119,6 @@ export async function runSetupWizard() {
     VIEWER_TOKEN: response.viewerToken.trim(),
     GUILD_ID: response.guildId.trim(),
     CHANNEL_ID: response.channelId.trim(),
-    RESOLUTION: "720p",
     FPS: 1,
     BITRATE_KBPS: 50,
     streamerUser,

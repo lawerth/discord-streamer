@@ -7,19 +7,22 @@ import ffmpegStatic from "ffmpeg-static";
 const execFileAsync = promisify(execFile);
 
 export function injectFFmpegPath() {
-  if (!ffmpegStatic) {
-    throw new Error("ffmpeg-static binary not found.");
+  let ffmpegBin = ffmpegStatic;
+
+  if (ffmpegBin && fs.existsSync(ffmpegBin)) {
+    const ffmpegDir = path.dirname(ffmpegBin);
+    const pathSeparator = process.platform === "win32" ? ";" : ":";
+    const currentPath = process.env.PATH || "";
+
+    if (!currentPath.includes(ffmpegDir)) {
+      process.env.PATH = `${ffmpegDir}${pathSeparator}${currentPath}`;
+    }
+  } else {
+    ffmpegBin = "ffmpeg";
   }
 
-  const ffmpegDir = path.dirname(ffmpegStatic);
-  const pathSeparator = process.platform === "win32" ? ";" : ":";
-
-  if (!process.env.PATH.includes(ffmpegDir)) {
-    process.env.PATH = `${ffmpegDir}${pathSeparator}${process.env.PATH}`;
-  }
-
-  process.env.FFMPEG_PATH = ffmpegStatic;
-  return ffmpegStatic;
+  process.env.FFMPEG_PATH = ffmpegBin;
+  return ffmpegBin;
 }
 
 export async function ensureDummyMedia() {

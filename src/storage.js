@@ -52,6 +52,7 @@ export async function detectProfileStreamingBadge(userId, token) {
         Authorization: token.trim(),
         "Content-Type": "application/json",
       },
+      signal: AbortSignal.timeout(10000),
     });
 
     if (!res.ok) return null;

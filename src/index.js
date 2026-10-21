@@ -14,16 +14,23 @@ async function main() {
 
     let engine = null;
     const tickInterval = setInterval(() => {
-      dashboard.render(engine ? engine.isStreaming : false);
+      if (engine) {
+        engine.tick();
+      } else {
+        dashboard.render();
+      }
     }, 1000);
 
     engine = new StreamEngine(config, dashboard);
     await engine.start();
 
+    let isExiting = false;
     const handleExit = () => {
+      if (isExiting) return;
+      isExiting = true;
       clearInterval(tickInterval);
       dashboard.addLog("Exiting cleanly...", "warn");
-      engine.stop();
+      if (engine) engine.stop();
       console.log(chalk.yellow("\nDisconnected from Discord. Exiting.\n"));
       process.exit(0);
     };

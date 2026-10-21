@@ -19,14 +19,27 @@ export class StreamEngine {
 
     this.isRunning = false;
     this.isStreaming = false;
+    this.isStartingBroadcast = false;
+
     this.streamCancelController = null;
+    this.streamReconnectTimer = null;
+    this.viewerReconnectTimer = null;
     this.viewerHeartbeatTimer = null;
-    this.statsSyncTimer = null;
+    this.statsSaveTimer = null;
     this.profileCheckTimer = null;
     this.dummyVideoPath = null;
 
     this.stats = loadStats();
-    this.dashboard.setTotalSeconds(this.stats.totalSeconds);
+    this.sessionFarmedSeconds = 0;
+    this.dashboard.setStats(this.stats.totalSeconds, this.sessionFarmedSeconds);
+  }
+
+  tick() {
+    if (this.isStreaming) {
+      this.stats.totalSeconds += 1;
+      this.sessionFarmedSeconds += 1;
+    }
+    this.dashboard.setStats(this.stats.totalSeconds, this.sessionFarmedSeconds);
   }
 
   async start() {
@@ -48,7 +61,6 @@ export class StreamEngine {
       await this.startViewerWatcher();
     });
 
-    // Auto-reconnect if streamer is disconnected, kicked, or moved
     this.streamerClient.on("voiceStateUpdate", (oldState, newState) => {
       if (!this.isRunning || newState.id !== this.streamerClient.user?.id) return;
 
@@ -56,43 +68,35 @@ export class StreamEngine {
         this.dashboard.addLog("Streamer disconnected from voice! Rejoining in 5s...", "warn");
         this.dashboard.setStreamerStatus("Rejoining...");
         this.isStreaming = false;
-        if (this.streamCancelController) this.streamCancelController.abort();
-
-        setTimeout(() => {
-          if (this.isRunning) this.startBroadcastLoop(this.dummyVideoPath);
-        }, 5000);
+        if (this.streamCancelController) {
+          this.streamCancelController.abort();
+        }
+        this.scheduleStreamReconnect(5000);
       } else if (newState.channelId !== this.config.CHANNEL_ID) {
         this.dashboard.addLog("Streamer moved from target channel! Returning...", "warn");
-        setTimeout(() => {
-          if (this.isRunning) this.startBroadcastLoop(this.dummyVideoPath);
-        }, 3000);
+        if (this.streamCancelController) {
+          this.streamCancelController.abort();
+        }
+        this.scheduleStreamReconnect(3000);
       }
     });
 
-    // Auto-reconnect if viewer is disconnected, kicked, or moved
     this.viewerClient.on("voiceStateUpdate", (oldState, newState) => {
       if (!this.isRunning || newState.id !== this.viewerClient.user?.id) return;
 
       if (!newState.channelId) {
         this.dashboard.addLog("Viewer disconnected from voice! Rejoining in 5s...", "warn");
         this.dashboard.setViewerStatus("Rejoining...");
-
-        setTimeout(() => {
-          if (this.isRunning) this.startViewerWatcher();
-        }, 5000);
+        this.scheduleViewerReconnect(5000);
       } else if (newState.channelId !== this.config.CHANNEL_ID) {
         this.dashboard.addLog("Viewer moved from target channel! Returning...", "warn");
-        setTimeout(() => {
-          if (this.isRunning) this.startViewerWatcher();
-        }, 3000);
+        this.scheduleViewerReconnect(3000);
       }
     });
 
-    this.statsSyncTimer = setInterval(() => {
-      if (this.isStreaming) {
-        this.stats.totalSeconds += 15;
+    this.statsSaveTimer = setInterval(() => {
+      if (this.isRunning && this.stats) {
         saveStats(this.stats);
-        this.dashboard.setTotalSeconds(this.stats.totalSeconds);
       }
     }, 15000);
 
@@ -108,6 +112,39 @@ export class StreamEngine {
     ]);
   }
 
+  scheduleStreamReconnect(delayMs = 5000) {
+    if (!this.isRunning) return;
+    this.isStreaming = false;
+
+    if (this.streamReconnectTimer) {
+      clearTimeout(this.streamReconnectTimer);
+      this.streamReconnectTimer = null;
+    }
+
+    this.streamReconnectTimer = setTimeout(() => {
+      this.streamReconnectTimer = null;
+      if (this.isRunning) {
+        this.startBroadcastLoop(this.dummyVideoPath);
+      }
+    }, delayMs);
+  }
+
+  scheduleViewerReconnect(delayMs = 5000) {
+    if (!this.isRunning) return;
+
+    if (this.viewerReconnectTimer) {
+      clearTimeout(this.viewerReconnectTimer);
+      this.viewerReconnectTimer = null;
+    }
+
+    this.viewerReconnectTimer = setTimeout(() => {
+      this.viewerReconnectTimer = null;
+      if (this.isRunning) {
+        this.startViewerWatcher();
+      }
+    }, delayMs);
+  }
+
   async checkProfileBadge() {
     try {
       const streamerId = this.config.streamerUser?.id || this.streamerClient?.user?.id;
@@ -121,7 +158,7 @@ export class StreamEngine {
           this.stats.totalSeconds = minSecondsForTier;
           this.stats.lastBadgeTier = detected.tier;
           saveStats(this.stats);
-          this.dashboard.setTotalSeconds(this.stats.totalSeconds);
+          this.dashboard.setStats(this.stats.totalSeconds, this.sessionFarmedSeconds);
           this.dashboard.addLog(`Profile sync: ${detected.name} badge detected (${detected.hours}h)`, "success");
         }
       }
@@ -129,9 +166,17 @@ export class StreamEngine {
   }
 
   async startBroadcastLoop(videoPath) {
+    if (!this.isRunning || this.isStartingBroadcast) return;
+    this.isStartingBroadcast = true;
+
     const { GUILD_ID, CHANNEL_ID, FPS, BITRATE_KBPS } = this.config;
 
     try {
+      if (this.streamReconnectTimer) {
+        clearTimeout(this.streamReconnectTimer);
+        this.streamReconnectTimer = null;
+      }
+
       if (this.streamCancelController) {
         this.streamCancelController.abort();
       }
@@ -143,6 +188,7 @@ export class StreamEngine {
       await this.streamer.joinVoice(GUILD_ID, CHANNEL_ID);
 
       this.isStreaming = true;
+      this.isStartingBroadcast = false;
       this.dashboard.setStreamerStatus("Broadcasting");
 
       const streamMedia = prepareStream(videoPath, {
@@ -172,19 +218,28 @@ export class StreamEngine {
         this.streamCancelController.signal
       );
     } catch (err) {
-      this.dashboard.addLog(`Stream error: ${err.message}`, "warn");
-      this.dashboard.setStreamerStatus("Reconnecting...");
+      this.isStartingBroadcast = false;
+      this.isStreaming = false;
 
-      if (this.isRunning) {
-        setTimeout(() => this.startBroadcastLoop(videoPath), 10000);
+      const wasAborted = this.streamCancelController?.signal?.aborted;
+      if (!wasAborted && this.isRunning) {
+        this.dashboard.addLog(`Stream error: ${err.message}`, "warn");
+        this.dashboard.setStreamerStatus("Reconnecting...");
+        this.scheduleStreamReconnect(10000);
       }
     }
   }
 
   async startViewerWatcher() {
+    if (!this.isRunning) return;
     const { GUILD_ID, CHANNEL_ID } = this.config;
 
     try {
+      if (this.viewerReconnectTimer) {
+        clearTimeout(this.viewerReconnectTimer);
+        this.viewerReconnectTimer = null;
+      }
+
       this.viewerClient.ws.broadcast({
         op: GatewayOpCodes.VOICE_STATE_UPDATE,
         d: {
@@ -203,8 +258,7 @@ export class StreamEngine {
 
       if (this.viewerHeartbeatTimer) clearInterval(this.viewerHeartbeatTimer);
       this.viewerHeartbeatTimer = setInterval(() => {
-        if (this.isStreaming) {
-          // Keep-alive: affirm voice channel presence and stream watching
+        if (this.isRunning && this.isStreaming) {
           this.viewerClient.ws.broadcast({
             op: GatewayOpCodes.VOICE_STATE_UPDATE,
             d: {
@@ -219,11 +273,10 @@ export class StreamEngine {
         }
       }, 30000);
     } catch (err) {
-      this.dashboard.addLog(`Viewer error: ${err.message}`, "warn");
-      this.dashboard.setViewerStatus("Reconnecting...");
-
       if (this.isRunning) {
-        setTimeout(() => this.startViewerWatcher(), 10000);
+        this.dashboard.addLog(`Viewer error: ${err.message}`, "warn");
+        this.dashboard.setViewerStatus("Reconnecting...");
+        this.scheduleViewerReconnect(10000);
       }
     }
   }
@@ -248,17 +301,37 @@ export class StreamEngine {
   stop() {
     this.isRunning = false;
     this.isStreaming = false;
+    this.isStartingBroadcast = false;
 
-    if (this.statsSyncTimer) clearInterval(this.statsSyncTimer);
-    if (this.profileCheckTimer) clearInterval(this.profileCheckTimer);
-    if (this.viewerHeartbeatTimer) clearInterval(this.viewerHeartbeatTimer);
+    if (this.streamReconnectTimer) {
+      clearTimeout(this.streamReconnectTimer);
+      this.streamReconnectTimer = null;
+    }
+    if (this.viewerReconnectTimer) {
+      clearTimeout(this.viewerReconnectTimer);
+      this.viewerReconnectTimer = null;
+    }
+    if (this.statsSaveTimer) {
+      clearInterval(this.statsSaveTimer);
+      this.statsSaveTimer = null;
+    }
+    if (this.profileCheckTimer) {
+      clearInterval(this.profileCheckTimer);
+      this.profileCheckTimer = null;
+    }
+    if (this.viewerHeartbeatTimer) {
+      clearInterval(this.viewerHeartbeatTimer);
+      this.viewerHeartbeatTimer = null;
+    }
 
     if (this.stats) {
       saveStats(this.stats);
     }
 
     if (this.streamCancelController) {
-      this.streamCancelController.abort();
+      try {
+        this.streamCancelController.abort();
+      } catch {}
     }
 
     try {
@@ -266,7 +339,9 @@ export class StreamEngine {
       this.streamer?.leaveVoice();
     } catch {}
 
-    this.streamerClient.destroy();
-    this.viewerClient.destroy();
+    try {
+      this.streamerClient.destroy();
+      this.viewerClient.destroy();
+    } catch {}
   }
 }

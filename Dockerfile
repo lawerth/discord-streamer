@@ -2,8 +2,8 @@ FROM node:22-alpine
 
 WORKDIR /app
 
-# Install dependencies required by node-gyp and native builds if needed
-RUN apk add --no-cache python3 make g++
+# Install dependencies required by node-gyp, native builds, and FFmpeg media processing
+RUN apk add --no-cache python3 make g++ ffmpeg gcompat
 
 COPY package*.json ./
 RUN npm install --omit=dev

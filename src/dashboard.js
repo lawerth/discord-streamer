@@ -28,11 +28,11 @@ function formatDuration(totalSeconds) {
 }
 
 export class Dashboard {
-  constructor(config, initialTotalSeconds = 0) {
+  constructor(config) {
     this.config = config;
     this.startTime = Date.now();
-    this.initialTotalSeconds = initialTotalSeconds;
-    this.totalSeconds = initialTotalSeconds;
+    this.totalSeconds = 0;
+    this.sessionSeconds = 0;
     this.streamerStatus = "Connecting...";
     this.viewerStatus = "Connecting...";
     this.streamQuality = `${config.FPS || 1} FPS / ${config.BITRATE_KBPS || 50} kbps`;
@@ -40,8 +40,16 @@ export class Dashboard {
     this.maxLogs = 4;
   }
 
+  setStats(totalSeconds, sessionSeconds) {
+    this.totalSeconds = Math.max(0, totalSeconds);
+    if (sessionSeconds !== undefined) {
+      this.sessionSeconds = Math.max(0, sessionSeconds);
+    }
+    this.render();
+  }
+
   setTotalSeconds(seconds) {
-    this.totalSeconds = Math.max(this.totalSeconds, seconds);
+    this.totalSeconds = Math.max(0, seconds);
     this.render();
   }
 
@@ -69,10 +77,8 @@ export class Dashboard {
     this.render();
   }
 
-  render(isStreaming = false) {
-    const sessionSeconds = Math.floor((Date.now() - this.startTime) / 1000);
-    const activeTotalSeconds = this.totalSeconds + (isStreaming ? sessionSeconds : 0);
-    const totalHours = activeTotalSeconds / 3600;
+  render() {
+    const totalHours = this.totalSeconds / 3600;
     const progress = getBadgeProgress(totalHours);
 
     const currentTierName = progress.currentTier
@@ -94,8 +100,8 @@ export class Dashboard {
       `  Channel  : Guild ${chalk.yellow(this.config.GUILD_ID)} / ${chalk.yellow(this.config.CHANNEL_ID)}`,
       "",
       chalk.bold(" Stats:"),
-      `  Session Time : ${chalk.bold.white(formatDuration(sessionSeconds))}`,
-      `  Total Farmed : ${chalk.bold.cyan(formatDuration(activeTotalSeconds))} (${totalHours.toFixed(3)} hrs)`,
+      `  Session Time : ${chalk.bold.white(formatDuration(this.sessionSeconds))}`,
+      `  Total Farmed : ${chalk.bold.cyan(formatDuration(this.totalSeconds))} (${totalHours.toFixed(3)} hrs)`,
       `  Spec         : ${chalk.gray(this.streamQuality)}`,
       "",
       chalk.bold(" Badge Progression:"),

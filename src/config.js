@@ -11,7 +11,7 @@ export async function loadConfig() {
   const envPath = path.resolve(process.cwd(), ".env");
   const hasEnvFile = fs.existsSync(envPath);
 
-  let { STREAMER_TOKEN, VIEWER_TOKEN, GUILD_ID, CHANNEL_ID, RESOLUTION, FPS, BITRATE_KBPS } = process.env;
+  let { STREAMER_TOKEN, VIEWER_TOKEN, GUILD_ID, CHANNEL_ID, FPS, BITRATE_KBPS } = process.env;
 
   const isConfigIncomplete =
     !hasEnvFile ||
@@ -56,7 +56,6 @@ export async function loadConfig() {
     VIEWER_TOKEN: VIEWER_TOKEN.trim(),
     GUILD_ID: GUILD_ID.trim(),
     CHANNEL_ID: CHANNEL_ID.trim(),
-    RESOLUTION: RESOLUTION || "720p",
     FPS: parseInt(FPS || "1", 10),
     BITRATE_KBPS: parseInt(BITRATE_KBPS || "50", 10),
     streamerUser,
