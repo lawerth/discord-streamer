@@ -1,16 +1,17 @@
-
+<p align="center">
+  <img src="assets/banner.png" alt="Discord Streamer" width="70%">
+</p>
 
 <div align="center">
-<h1>🎮 Discord Streamer</h1>
 
 [![Node.js](https://img.shields.io/badge/Node.js-v18%2B-green.svg)](https://nodejs.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg)](https://www.docker.com/)
 [![WebRTC](https://img.shields.io/badge/Discord-WebRTC%20Stream-5865F2.svg)](https://discord.com)
 
-**An automated, ultra-lightweight booster to farm hours for Discord's new progressive Streaming Profile Badge.**
+**Automated 24/7 booster for Discord's progressive Streaming Profile Badge.**
 
-Featuring an interactive first-run CLI setup wizard, live session dashboard, and continuous 24/7 background streaming with 0.1% CPU usage.
+Level up your badge effortlessly with automated audience emulation, ultra-low resource usage, and real-time milestone tracking.
 
 </div>
 
@@ -18,37 +19,37 @@ Featuring an interactive first-run CLI setup wizard, live session dashboard, and
 
 ## 📖 About The Streaming Badge
 
-Discord recently introduced experimental progressive Activity Badges on user profiles. One of the rarest and most sought-after is the **Streaming Badge**, which evolves through **10 milestone tiers** based on total hours spent broadcasting to at least one active viewer.
+Discord features progressive **Activity Badges** that dynamically evolve on user profiles. The **Streaming Badge** is the longest grind on the platform, requiring up to **5,000+ hours** of broadcast time in front of an active audience to reach the ultimate **Phenomenon** tier.
 
 ### 🏆 Badge Milestones & Tiers
 
 | Tier | Badge Level | Required Stream Time |
 | :---: | :--- | :---: |
-| 1 | 🖥️ **Newcomer** | **1 Hour** |
-| 2 | 🟢 **Fledgling** | **5 Hours** |
-| 3 | 🍏 **Breakout** | **20 Hours** |
-| 4 | 🐬 **Standout** | **75 Hours** |
-| 5 | 🌊 **Trendsetter** | **150 Hours** |
-| 6 | 🔷 **Headliner** | **300 Hours** |
-| 7 | 🟣 **Superstar** | **500 Hours** |
-| 8 | 🌸 **Sensation** | **1,000 Hours** |
-| 9 | 🌺 **Visionary** | **2,000 Hours** |
-| 10 | 👑 **Phenomenon** | **5,000+ Hours** |
+| 1 | <img src="assets/badges/01_newcomer.png" width="24" height="24" valign="middle" /> **Newcomer** | **1 Hour** |
+| 2 | <img src="assets/badges/02_fledgling.png" width="24" height="24" valign="middle" /> **Fledgling** | **5 Hours** |
+| 3 | <img src="assets/badges/03_breakout.png" width="24" height="24" valign="middle" /> **Breakout** | **20 Hours** |
+| 4 | <img src="assets/badges/04_standout.png" width="24" height="24" valign="middle" /> **Standout** | **75 Hours** |
+| 5 | <img src="assets/badges/05_trendsetter.png" width="24" height="24" valign="middle" /> **Trendsetter** | **150 Hours** |
+| 6 | <img src="assets/badges/06_headliner.png" width="24" height="24" valign="middle" /> **Headliner** | **300 Hours** |
+| 7 | <img src="assets/badges/07_superstar.png" width="24" height="24" valign="middle" /> **Superstar** | **500 Hours** |
+| 8 | <img src="assets/badges/08_sensation.png" width="24" height="24" valign="middle" /> **Sensation** | **1,000 Hours** |
+| 9 | <img src="assets/badges/09_visionary.png" width="24" height="24" valign="middle" /> **Visionary** | **2,000 Hours** |
+| 10 | <img src="assets/badges/10_phenomenon.png" width="24" height="24" valign="middle" /> **Phenomenon** | **5,000+ Hours** |
 
-> [!IMPORTANT]
-> **Viewer Requirement:** Discord only registers hours if another user is actively watching your stream. This tool solves this by running an automated **Viewer (Alt)** account that joins the channel and sends continuous Gateway `STREAM_WATCH` (Opcode 20) packets.
+> [!NOTE]
+> **Audience Requirement:** Discord only counts hours when someone is actively watching your broadcast. Streaming in an empty voice channel does **not** count. **Discord Streamer** solves this by pairing your streamer with an automated **Viewer (Alt)** account that maintains a real-time Gateway stream subscription (`STREAM_WATCH` Opcode 20).
 
 ---
 
 ## ✨ Features
 
-- **⚡ Ultra-Low Resource Profile:** Automatically loops a 1 FPS / 15 kbps dummy video file (~4 KB). Runs continuously on budget 512MB VPS instances without burning CPU or bandwidth.
-- **💾 Auto-Persistence & Profile Detection:** Remembers your streamed hours across restarts and automatically detects if you've already unlocked a badge tier on your profile.
-- **🛠️ Interactive First-Run Wizard:** No manual `.env` editing needed. The CLI asks for your tokens and channel IDs, verifies them directly with Discord's API, and saves them automatically.
-- **📊 Modern Terminal Dashboard:** Live session counter, active progress bars, time remaining to the next badge tier, and real-time activity logs.
-- **🔄 Auto-Reconnect & Fault-Tolerant:** Automatically recovers from Discord voice server drops, internet hiccups, and voice disconnects/kicks.
-- **📦 Zero-Config FFmpeg:** Powered by `ffmpeg-static`, which automatically injects platform-specific FFmpeg binaries without manual installations.
-- **🐳 Docker Ready:** Includes `Dockerfile` and `docker-compose.yml` for effortless 24/7 background hosting.
+- **⚡ Ultra-Low Resource Usage:** Broadcasts an optimized 1 FPS / 15 kbps dummy video loop. Uses less than **0.1% CPU** and negligible bandwidth, making it ideal for 24/7 hosting on the cheapest 512MB VPS.
+- **👥 Automated Audience Emulation:** Automatically controls a secondary viewer account to join and watch the stream, guaranteeing hours are registered by Discord.
+- **🛡️ Self-Healing Auto-Reconnect:** Instantly recovers and rejoins if either account gets disconnected, moved, or kicked from the voice channel.
+- **💻 Live CLI Dashboard:** Clean terminal UI displaying session uptime, all-time accumulated hours, current badge tier, and a live progress bar toward the next milestone.
+- **💾 Smart Persistence & Profile Sync:** Saves farmed time locally and checks your Discord profile to keep stats synchronized across sessions and reboots.
+- **📦 Zero External Dependencies:** FFmpeg is bundled via `ffmpeg-static`—no manual installation or PATH configuration required.
+- **🐳 1-Command Docker Setup:** Fully containerized with `docker-compose.yml` for effortless 24/7 background deployment.
 
 ---
 
@@ -58,11 +59,12 @@ Discord recently introduced experimental progressive Activity Badges on user pro
 - **Node.js** (v18 or higher)
 - Two Discord accounts:
   - **Streamer Account:** Your main account that earns the badge.
-  - **Viewer Account:** A secondary / alt account that watches the stream.
+  - **Viewer Account:** A secondary / alt account to watch the stream.
+- A voice channel where both accounts have **Connect** and **Video / Stream** permissions.
 
 ### 2. Installation
 
-Clone this repository and install dependencies:
+Clone the repository and install dependencies:
 
 ```bash
 git clone https://github.com/your-username/discord-streamer.git
@@ -76,21 +78,23 @@ npm install
 npm start
 ```
 
-If you are running the project for the first time, the **Interactive Setup Wizard** will guide you step-by-step:
-1. Enter your **Streamer Token** (Main Account).
-2. Enter your **Viewer Token** (Alt Account).
-3. Enter the **Discord Server (Guild) ID**.
-4. Enter the **Voice Channel ID**.
+On first run, the **Interactive Setup Wizard** will prompt you for:
+1. **Streamer Token** (Main Account)
+2. **Viewer Token** (Alt Account)
+3. **Discord Server (Guild) ID**
+4. **Voice Channel ID**
 
-Tokens are verified in real-time with Discord's API and saved to `.env`.
+> **Tip:** Enable **Developer Mode** in Discord (`User Settings > Advanced > Developer Mode`) to easily right-click any server or voice channel to copy IDs.
+
+Your tokens are verified with Discord's API and saved locally to `.env`.
 
 ---
 
-## 🐳 Running with Docker (24/7 VPS Hosting)
+## 🐳 Running with Docker
 
-If you have a Linux VPS and want to leave it running 24/7:
+To run continuously in the background on a server or VPS:
 
-1. Copy `.env.example` to `.env` and fill in your credentials:
+1. Copy the example environment file and configure your credentials:
    ```bash
    cp .env.example .env
    nano .env
@@ -99,7 +103,7 @@ If you have a Linux VPS and want to leave it running 24/7:
    ```bash
    docker compose up -d
    ```
-3. View the live dashboard logs:
+3. View real-time logs anytime:
    ```bash
    docker compose logs -f
    ```
@@ -109,17 +113,17 @@ If you have a Linux VPS and want to leave it running 24/7:
 ## ⚠️ Important Requirements & Settings
 
 ### 1. Enable Discord Telemetry
-For Discord to log your streaming hours towards the badge, ensure this setting is enabled on your **Streamer** account:
-> **User Settings** ➔ **Privacy & Safety** ➔ Turn **ON**: *"Use data to personalize my Discord experience"*
+For Discord to log your streaming activity towards the badge, ensure this setting is turned **ON** on your **Streamer** account:
+> **User Settings** ➔ **Privacy & Safety** ➔ **How We Use Your Data** ➔ Turn **ON**: *"Use data to personalize my Discord experience"*
 
-### 2. Stats Sync Delay
-Discord aggregates activity badge data via backend analytics pipelines. Hours may take anywhere from **2 to 24 hours** to reflect on your public profile card.
+### 2. Profile Sync Delay
+Discord processes activity badge milestones in scheduled backend batches. It may take **2 to 24 hours** for your accumulated hours to visibly update on your public profile card.
 
 ---
 
-## 🔒 Security & Terms of Service Disclaimer
+## 🔒 Disclaimer
 
-This tool is created for educational and experimental purposes. Using selfbots or automated user account tokens violates **Discord's Terms of Service**. Use secondary / burner accounts for testing whenever possible. The author assumes no responsibility for any account restrictions or bans resulting from the use of this software.
+This project is created for educational and experimental purposes. Automating user accounts (selfbots) violates **Discord's Terms of Service**. Use at your own discretion, and prefer using secondary / alt accounts for testing. The author assumes no liability for any account restrictions or bans.
 
 ---
 
