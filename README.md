@@ -41,10 +41,10 @@ Discord features progressive **Activity Badges** that dynamically evolve on user
 
 ## ✨ Features
 
-- **⚡ Ultra-Low Resource Usage:** Broadcasts an optimized 1 FPS / 15 kbps dummy video loop. Uses less than **0.1% CPU** and negligible bandwidth, making it ideal for 24/7 hosting on the cheapest 512MB VPS.
-- **👥 Automated Audience Emulation:** Automatically controls a secondary viewer account to join and watch the stream, guaranteeing hours are registered by Discord.
-- **🛡️ Self-Healing Auto-Reconnect:** Instantly recovers and rejoins if either account gets disconnected, moved, or kicked from the voice channel.
-- **💻 Live CLI Dashboard:** Clean terminal UI displaying session uptime, all-time accumulated hours, current badge tier, and a live progress bar toward the next milestone.
+- **⚡ Ultra-Low Resource Usage:** Broadcasts an optimized 1 FPS / 15 kbps dummy video loop. Uses less than **0.1% CPU** per streamer and negligible bandwidth, making it ideal for 24/7 hosting on the cheapest 512MB VPS.
+- **👥 Multi-Streamer & Audience Emulation:** Farm multiple accounts simultaneously! A single viewer account watches all streamers in the voice channel using Discord's native Multistream protocol, boosting all badges at once.
+- **🛡️ Self-Healing Auto-Reconnect:** Instantly recovers and rejoins if any account gets disconnected, moved, or kicked from the voice channel.
+- **💻 Live CLI Dashboard:** Clean terminal UI displaying per-streamer uptime, accumulated hours, current badge tiers, and live progress bars toward milestones.
 - **💾 Smart Persistence & Profile Sync:** Saves farmed time locally and checks your Discord profile to keep stats synchronized across sessions and reboots.
 - **📦 Zero External Dependencies:** FFmpeg is bundled via `ffmpeg-static`—no manual installation or PATH configuration required.
 - **🐳 1-Command Docker Setup:** Fully containerized with `docker-compose.yml` for effortless 24/7 background deployment.
@@ -55,10 +55,10 @@ Discord features progressive **Activity Badges** that dynamically evolve on user
 
 ### 1. Prerequisites
 - **Node.js** (v18 or higher)
-- Two Discord accounts:
-  - **Streamer Account:** Your main account that earns the badge.
-  - **Viewer Account:** A secondary / alt account to watch the stream.
-- A voice channel where both accounts have **Connect** and **Video / Stream** permissions.
+- Discord accounts:
+  - **Streamer Account(s):** One or more accounts that broadcast and earn the badge.
+  - **Viewer Account:** A single secondary / alt account to watch the streams.
+- A voice channel where all accounts have **Connect** and **Video / Stream** permissions.
 
 ### 2. Installation
 
@@ -77,7 +77,7 @@ npm start
 ```
 
 On first run, the **Interactive Setup Wizard** will prompt you for:
-1. **Streamer Token** (Main Account)
+1. **Streamer Token(s)** (Main accounts, separated by commas if multiple)
 2. **Viewer Token** (Alt Account)
 3. **Discord Server (Guild) ID**
 4. **Voice Channel ID**

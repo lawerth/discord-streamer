@@ -4,7 +4,7 @@ import logUpdate from "log-update";
 import gradient from "gradient-string";
 import { getBadgeProgress } from "./constants.js";
 
-function createProgressBar(percent, length = 30) {
+function createProgressBar(percent, length = 26) {
   const clamped = Math.max(0, Math.min(100, percent));
   const filled = Math.round((clamped / 100) * length);
   const empty = length - filled;
@@ -30,26 +30,28 @@ function formatDuration(totalSeconds) {
 export class Dashboard {
   constructor(config) {
     this.config = config;
-    this.startTime = Date.now();
-    this.totalSeconds = 0;
-    this.sessionSeconds = 0;
-    this.streamerStatus = "Connecting...";
     this.viewerStatus = "Connecting...";
     this.streamQuality = `${config.FPS || 1} FPS / ${config.BITRATE_KBPS || 50} kbps`;
     this.logs = [];
     this.maxLogs = 4;
+
+    this.streamers = (config.streamers || []).map((s) => ({
+      id: s.user.id,
+      username: s.user.username,
+      status: "Connecting...",
+      isStreaming: false,
+      totalSeconds: 0,
+      sessionSeconds: 0,
+    }));
   }
 
-  setStats(totalSeconds, sessionSeconds) {
-    this.totalSeconds = Math.max(0, totalSeconds);
-    if (sessionSeconds !== undefined) {
-      this.sessionSeconds = Math.max(0, sessionSeconds);
-    }
+  updateStreamers(streamersData) {
+    this.streamers = streamersData;
     this.render();
   }
 
-  setTotalSeconds(seconds) {
-    this.totalSeconds = Math.max(0, seconds);
+  setViewerStatus(status) {
+    this.viewerStatus = status;
     this.render();
   }
 
@@ -67,51 +69,105 @@ export class Dashboard {
     this.render();
   }
 
-  setStreamerStatus(status) {
-    this.streamerStatus = status;
-    this.render();
-  }
-
-  setViewerStatus(status) {
-    this.viewerStatus = status;
-    this.render();
-  }
-
   render() {
-    const totalHours = this.totalSeconds / 3600;
-    const progress = getBadgeProgress(totalHours);
+    const isMultiStreamer = this.streamers.length > 1;
 
-    const currentTierName = progress.currentTier
-      ? `${progress.currentTier.icon} ${progress.currentTier.name} - ${progress.currentTier.hours}h`
-      : chalk.gray("Unranked (< 1 Hour)");
+    let streamerContent = [];
 
-    const nextTierName = progress.nextTier
-      ? `${progress.nextTier.icon} ${progress.nextTier.name} - ${progress.nextTier.hours}h`
-      : chalk.green("Max Level (5,000h) Achieved!");
+    if (!isMultiStreamer && this.streamers.length === 1) {
+      const s = this.streamers[0];
+      const totalHours = s.totalSeconds / 3600;
+      const progress = getBadgeProgress(totalHours);
 
-    const progressBar = createProgressBar(progress.progressPercent, 28);
+      const currentTierName = progress.currentTier
+        ? `${progress.currentTier.icon} ${progress.currentTier.name} - ${progress.currentTier.hours}h`
+        : chalk.gray("Unranked (< 1 Hour)");
+
+      const nextTierName = progress.nextTier
+        ? `${progress.nextTier.icon} ${progress.nextTier.name} - ${progress.nextTier.hours}h`
+        : chalk.green("Max Level (5,000h) Achieved!");
+
+      const progressBar = createProgressBar(progress.progressPercent, 28);
+
+      let statusColor = chalk.yellow;
+      if (s.status === "Broadcasting") statusColor = chalk.green;
+      if (s.status.includes("Error") || s.status.includes("Rejoining")) statusColor = chalk.red;
+
+      streamerContent = [
+        chalk.bold(" Accounts:"),
+        `  Streamer : ${chalk.bold.green(s.username)} -> ${statusColor(s.status)}`,
+        `  Viewer   : ${chalk.bold.magenta(this.config.viewerUser?.username || "Viewer")} -> ${this.viewerStatus}`,
+        `  Channel  : Guild ${chalk.yellow(this.config.GUILD_ID)} / ${chalk.yellow(this.config.CHANNEL_ID)}`,
+        "",
+        chalk.bold(" Stats:"),
+        `  Session Time : ${chalk.bold.white(formatDuration(s.sessionSeconds))}`,
+        `  Total Farmed : ${chalk.bold.cyan(formatDuration(s.totalSeconds))} (${totalHours.toFixed(3)} hrs)`,
+        `  Spec         : ${chalk.gray(this.streamQuality)}`,
+        "",
+        chalk.bold(" Badge Progression:"),
+        `  Current Tier : ${currentTierName}`,
+        `  Next Tier    : ${nextTierName}`,
+        `  Progress     : ${progressBar}`,
+        progress.nextTier ? `  Remaining    : ${chalk.yellow(progress.neededHours.toFixed(2))} hours` : "",
+      ];
+    } else {
+      const activeCount = this.streamers.filter((s) => s.isStreaming).length;
+
+      streamerContent = [
+        chalk.bold(" Channel & Viewer:"),
+        `  Viewer   : ${chalk.bold.magenta(this.config.viewerUser?.username || "Viewer")} -> ${this.viewerStatus}`,
+        `  Channel  : Guild ${chalk.yellow(this.config.GUILD_ID)} / ${chalk.yellow(this.config.CHANNEL_ID)}`,
+        `  Spec     : ${chalk.gray(this.streamQuality)}`,
+        "",
+        chalk.bold(` Streamers (${this.streamers.length} accounts, ${activeCount} active):`),
+      ];
+
+      for (let i = 0; i < this.streamers.length; i++) {
+        const s = this.streamers[i];
+        const totalHours = s.totalSeconds / 3600;
+        const progress = getBadgeProgress(totalHours);
+
+        const currentTier = progress.currentTier
+          ? `${progress.currentTier.icon} ${progress.currentTier.name} (${progress.currentTier.hours}h)`
+          : chalk.gray("Unranked (< 1h)");
+
+        const nextTier = progress.nextTier
+          ? `${progress.nextTier.icon} ${progress.nextTier.name} (${progress.nextTier.hours}h)`
+          : chalk.green("Max (5,000h)");
+
+        const progressBar = createProgressBar(progress.progressPercent, 20);
+
+        let statusColor = chalk.yellow;
+        if (s.status === "Broadcasting") statusColor = chalk.green;
+        if (s.status.includes("Error") || s.status.includes("Rejoining")) statusColor = chalk.red;
+
+        streamerContent.push(
+          `  ${chalk.bold.white(`[${i + 1}]`)} ${chalk.bold.green(s.username)} -> ${statusColor(s.status)}`,
+          `      Farmed: ${chalk.bold.cyan(formatDuration(s.totalSeconds))} (${totalHours.toFixed(2)}h)  |  Session: ${chalk.white(formatDuration(s.sessionSeconds))}`,
+          `      Badge:  ${currentTier} -> ${nextTier}`,
+          `      Prog:   ${progressBar}` + (progress.nextTier ? chalk.gray(` (${progress.neededHours.toFixed(1)}h left)`) : ""),
+          ""
+        );
+      }
+    }
+
+    const logLines = [];
+    for (let i = 0; i < this.maxLogs; i++) {
+      if (this.logs[i]) {
+        logLines.push(`  ${this.logs[i]}`);
+      } else if (i === 0 && this.logs.length === 0) {
+        logLines.push(chalk.gray("  No events yet."));
+      } else {
+        logLines.push(chalk.gray("  -"));
+      }
+    }
 
     const content = [
       chalk.bold(gradient.morning("  === DISCORD STREAMER ===  ")),
       "",
-      chalk.bold(" Accounts:"),
-      `  Streamer : ${chalk.bold.green(this.config.streamerUser?.username || "Streamer")} -> ${this.streamerStatus}`,
-      `  Viewer   : ${chalk.bold.magenta(this.config.viewerUser?.username || "Viewer")} -> ${this.viewerStatus}`,
-      `  Channel  : Guild ${chalk.yellow(this.config.GUILD_ID)} / ${chalk.yellow(this.config.CHANNEL_ID)}`,
-      "",
-      chalk.bold(" Stats:"),
-      `  Session Time : ${chalk.bold.white(formatDuration(this.sessionSeconds))}`,
-      `  Total Farmed : ${chalk.bold.cyan(formatDuration(this.totalSeconds))} (${totalHours.toFixed(3)} hrs)`,
-      `  Spec         : ${chalk.gray(this.streamQuality)}`,
-      "",
-      chalk.bold(" Badge Progression:"),
-      `  Current Tier : ${currentTierName}`,
-      `  Next Tier    : ${nextTierName}`,
-      `  Progress     : ${progressBar}`,
-      progress.nextTier ? `  Remaining    : ${chalk.yellow(progress.neededHours.toFixed(2))} hours` : "",
-      "",
+      ...streamerContent,
       chalk.bold(" Logs:"),
-      ...(this.logs.length > 0 ? this.logs.map((l) => `  ${l}`) : [chalk.gray("  No events yet.")]),
+      ...logLines,
     ]
       .filter((line) => line !== null)
       .join("\n");

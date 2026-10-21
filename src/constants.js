@@ -1,5 +1,5 @@
 export const BADGE_TIERS = [
-  { tier: 1, name: "Newcomer", hours: 1, icon: "🖥️", color: "#B9BBBE" },
+  { tier: 1, name: "Newcomer", hours: 1, icon: "💻", color: "#B9BBBE" },
   { tier: 2, name: "Fledgling", hours: 5, icon: "🟢", color: "#57F287" },
   { tier: 3, name: "Breakout", hours: 20, icon: "🍏", color: "#3BA55D" },
   { tier: 4, name: "Standout", hours: 75, icon: "🐬", color: "#00E5FF" },

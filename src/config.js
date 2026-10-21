@@ -11,15 +11,21 @@ export async function loadConfig() {
   const envPath = path.resolve(process.cwd(), ".env");
   const hasEnvFile = fs.existsSync(envPath);
 
-  let { STREAMER_TOKEN, VIEWER_TOKEN, GUILD_ID, CHANNEL_ID, FPS, BITRATE_KBPS } = process.env;
+  let { STREAMER_TOKENS, VIEWER_TOKEN, GUILD_ID, CHANNEL_ID, FPS, BITRATE_KBPS } = process.env;
+
+  const streamerTokens = (STREAMER_TOKENS || "")
+    .split(/[,;\n]/)
+    .map((t) => t.trim())
+    .filter((t) => t.length > 0);
+
+  const uniqueStreamerTokens = [...new Set(streamerTokens)];
 
   const isConfigIncomplete =
     !hasEnvFile ||
-    !STREAMER_TOKEN ||
+    uniqueStreamerTokens.length === 0 ||
     !VIEWER_TOKEN ||
     !GUILD_ID ||
     !CHANNEL_ID ||
-    STREAMER_TOKEN.trim() === "" ||
     VIEWER_TOKEN.trim() === "" ||
     GUILD_ID.trim() === "" ||
     CHANNEL_ID.trim() === "";
@@ -30,13 +36,17 @@ export async function loadConfig() {
 
   const spinner = ora("Validating accounts...").start();
 
-  const [streamerUser, viewerUser] = await Promise.all([
-    verifyDiscordToken(STREAMER_TOKEN),
+  const [streamerUsers, viewerUser] = await Promise.all([
+    Promise.all(uniqueStreamerTokens.map((t) => verifyDiscordToken(t))),
     verifyDiscordToken(VIEWER_TOKEN),
   ]);
 
-  if (!streamerUser) {
-    spinner.fail(chalk.red("STREAMER_TOKEN in .env is invalid."));
+  const invalidIndices = streamerUsers
+    .map((u, i) => (u ? null : i + 1))
+    .filter((i) => i !== null);
+
+  if (invalidIndices.length > 0) {
+    spinner.fail(chalk.red(`Streamer token #${invalidIndices.join(", #")} in .env is invalid.`));
     process.exit(1);
   }
 
@@ -45,20 +55,30 @@ export async function loadConfig() {
     process.exit(1);
   }
 
+  if (streamerUsers.some((u) => u.id === viewerUser.id)) {
+    spinner.fail(chalk.red("Viewer account cannot be one of the Streamer accounts. Use a separate alt account."));
+    process.exit(1);
+  }
+
   spinner.succeed(
     chalk.green(
-      `Accounts:\n  - Streamer: ${chalk.bold(streamerUser.username)} (${streamerUser.id})\n  - Viewer:   ${chalk.bold(viewerUser.username)} (${viewerUser.id})`
+      `Accounts:\n` +
+        streamerUsers.map((u, i) => `  - Streamer [${i + 1}]: ${chalk.bold(u.username)} (${u.id})`).join("\n") +
+        `\n  - Viewer:        ${chalk.bold(viewerUser.username)} (${viewerUser.id})`
     )
   );
 
   return {
-    STREAMER_TOKEN: STREAMER_TOKEN.trim(),
+    STREAMER_TOKENS: uniqueStreamerTokens.join(","),
+    streamers: uniqueStreamerTokens.map((token, i) => ({
+      token,
+      user: streamerUsers[i],
+    })),
     VIEWER_TOKEN: VIEWER_TOKEN.trim(),
+    viewerUser,
     GUILD_ID: GUILD_ID.trim(),
     CHANNEL_ID: CHANNEL_ID.trim(),
     FPS: parseInt(FPS || "1", 10),
     BITRATE_KBPS: parseInt(BITRATE_KBPS || "50", 10),
-    streamerUser,
-    viewerUser,
   };
 }

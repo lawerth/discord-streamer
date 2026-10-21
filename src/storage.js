@@ -13,17 +13,16 @@ export function loadStats() {
 
     if (fs.existsSync(STATS_FILE)) {
       const data = JSON.parse(fs.readFileSync(STATS_FILE, "utf-8"));
-      return {
-        totalSeconds: Number(data.totalSeconds) || 0,
-        lastBadgeTier: Number(data.lastBadgeTier) || 0,
-      };
+      if (data.streamers && typeof data.streamers === "object") {
+        return data;
+      }
     }
   } catch {}
 
-  return { totalSeconds: 0, lastBadgeTier: 0 };
+  return { streamers: {} };
 }
 
-export function saveStats(stats) {
+export function saveStats(statsData) {
   try {
     if (!fs.existsSync(DATA_DIR)) {
       fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -33,8 +32,7 @@ export function saveStats(stats) {
       STATS_FILE,
       JSON.stringify(
         {
-          totalSeconds: Math.floor(stats.totalSeconds || 0),
-          lastBadgeTier: Number(stats.lastBadgeTier || 0),
+          streamers: statsData.streamers || {},
           lastUpdated: new Date().toISOString(),
         },
         null,

@@ -13,33 +13,65 @@ export class StreamEngine {
     this.config = config;
     this.dashboard = dashboard;
 
-    this.streamerClient = new Client({ checkUpdate: false });
     this.viewerClient = new Client({ checkUpdate: false });
-    this.streamer = null;
+    this.statsData = loadStats();
+
+    this.streamers = config.streamers.map((s) => {
+      const streamerStats = this.statsData.streamers[s.user.id] || {
+        totalSeconds: 0,
+        lastBadgeTier: 0,
+      };
+      this.statsData.streamers[s.user.id] = streamerStats;
+
+      const client = new Client({ checkUpdate: false });
+      return {
+        id: s.user.id,
+        user: s.user,
+        token: s.token,
+        client: client,
+        streamer: new Streamer(client),
+        isStreaming: false,
+        isStartingBroadcast: false,
+        streamCancelController: null,
+        reconnectTimer: null,
+        status: "Connecting...",
+        sessionFarmedSeconds: 0,
+        stats: streamerStats,
+      };
+    });
 
     this.isRunning = false;
-    this.isStreaming = false;
-    this.isStartingBroadcast = false;
-
-    this.streamCancelController = null;
-    this.streamReconnectTimer = null;
     this.viewerReconnectTimer = null;
     this.viewerHeartbeatTimer = null;
     this.statsSaveTimer = null;
     this.profileCheckTimer = null;
     this.dummyVideoPath = null;
 
-    this.stats = loadStats();
-    this.sessionFarmedSeconds = 0;
-    this.dashboard.setStats(this.stats.totalSeconds, this.sessionFarmedSeconds);
+    this.syncDashboardStreamers();
+  }
+
+  syncDashboardStreamers() {
+    this.dashboard.updateStreamers(
+      this.streamers.map((s) => ({
+        id: s.id,
+        username: s.user.username,
+        tag: s.user.tag || s.user.username,
+        status: s.status,
+        isStreaming: s.isStreaming,
+        totalSeconds: s.stats.totalSeconds,
+        sessionSeconds: s.sessionFarmedSeconds,
+      }))
+    );
   }
 
   tick() {
-    if (this.isStreaming) {
-      this.stats.totalSeconds += 1;
-      this.sessionFarmedSeconds += 1;
+    for (const streamer of this.streamers) {
+      if (streamer.isStreaming) {
+        streamer.stats.totalSeconds += 1;
+        streamer.sessionFarmedSeconds += 1;
+      }
     }
-    this.dashboard.setStats(this.stats.totalSeconds, this.sessionFarmedSeconds);
+    this.syncDashboardStreamers();
   }
 
   async start() {
@@ -47,38 +79,41 @@ export class StreamEngine {
     injectFFmpegPath();
 
     this.dummyVideoPath = await ensureDummyMedia();
-    await this.checkProfileBadge();
+    await this.checkAllProfileBadges();
 
-    this.streamer = new Streamer(this.streamerClient);
+    for (const streamer of this.streamers) {
+      streamer.client.on("ready", async () => {
+        this.dashboard.addLog(`Streamer ready: ${streamer.user.username}`, "success");
+        await this.startStreamerBroadcast(streamer);
+      });
 
-    this.streamerClient.on("ready", async () => {
-      this.dashboard.addLog(`Streamer ready: ${this.streamerClient.user.tag}`, "success");
-      await this.startBroadcastLoop(this.dummyVideoPath);
-    });
+      streamer.client.on("voiceStateUpdate", (oldState, newState) => {
+        if (!this.isRunning || newState.id !== streamer.user.id) return;
+
+        if (!newState.channelId) {
+          this.dashboard.addLog(`Streamer ${streamer.user.username} disconnected! Rejoining in 5s...`, "warn");
+          streamer.status = "Rejoining...";
+          streamer.isStreaming = false;
+          if (streamer.streamCancelController) {
+            streamer.streamCancelController.abort();
+          }
+          this.scheduleStreamerReconnect(streamer, 5000);
+          this.triggerViewerWatch();
+          this.syncDashboardStreamers();
+        } else if (newState.channelId !== this.config.CHANNEL_ID) {
+          this.dashboard.addLog(`Streamer ${streamer.user.username} moved! Returning...`, "warn");
+          if (streamer.streamCancelController) {
+            streamer.streamCancelController.abort();
+          }
+          this.scheduleStreamerReconnect(streamer, 3000);
+          this.syncDashboardStreamers();
+        }
+      });
+    }
 
     this.viewerClient.on("ready", async () => {
       this.dashboard.addLog(`Viewer ready: ${this.viewerClient.user.tag}`, "success");
       await this.startViewerWatcher();
-    });
-
-    this.streamerClient.on("voiceStateUpdate", (oldState, newState) => {
-      if (!this.isRunning || newState.id !== this.streamerClient.user?.id) return;
-
-      if (!newState.channelId) {
-        this.dashboard.addLog("Streamer disconnected from voice! Rejoining in 5s...", "warn");
-        this.dashboard.setStreamerStatus("Rejoining...");
-        this.isStreaming = false;
-        if (this.streamCancelController) {
-          this.streamCancelController.abort();
-        }
-        this.scheduleStreamReconnect(5000);
-      } else if (newState.channelId !== this.config.CHANNEL_ID) {
-        this.dashboard.addLog("Streamer moved from target channel! Returning...", "warn");
-        if (this.streamCancelController) {
-          this.streamCancelController.abort();
-        }
-        this.scheduleStreamReconnect(3000);
-      }
     });
 
     this.viewerClient.on("voiceStateUpdate", (oldState, newState) => {
@@ -95,36 +130,37 @@ export class StreamEngine {
     });
 
     this.statsSaveTimer = setInterval(() => {
-      if (this.isRunning && this.stats) {
-        saveStats(this.stats);
+      if (this.isRunning && this.statsData) {
+        saveStats(this.statsData);
       }
     }, 15000);
 
     this.profileCheckTimer = setInterval(async () => {
       if (this.isRunning) {
-        await this.checkProfileBadge();
+        await this.checkAllProfileBadges();
       }
     }, 5 * 60 * 1000);
 
-    await Promise.all([
-      this.streamerClient.login(this.config.STREAMER_TOKEN),
+    const logins = [
+      ...this.streamers.map((s) => s.client.login(s.token)),
       this.viewerClient.login(this.config.VIEWER_TOKEN),
-    ]);
+    ];
+    await Promise.all(logins);
   }
 
-  scheduleStreamReconnect(delayMs = 5000) {
+  scheduleStreamerReconnect(streamer, delayMs = 5000) {
     if (!this.isRunning) return;
-    this.isStreaming = false;
+    streamer.isStreaming = false;
 
-    if (this.streamReconnectTimer) {
-      clearTimeout(this.streamReconnectTimer);
-      this.streamReconnectTimer = null;
+    if (streamer.reconnectTimer) {
+      clearTimeout(streamer.reconnectTimer);
+      streamer.reconnectTimer = null;
     }
 
-    this.streamReconnectTimer = setTimeout(() => {
-      this.streamReconnectTimer = null;
+    streamer.reconnectTimer = setTimeout(() => {
+      streamer.reconnectTimer = null;
       if (this.isRunning) {
-        this.startBroadcastLoop(this.dummyVideoPath);
+        this.startStreamerBroadcast(streamer);
       }
     }, delayMs);
   }
@@ -145,53 +181,54 @@ export class StreamEngine {
     }, delayMs);
   }
 
-  async checkProfileBadge() {
+  async checkAllProfileBadges() {
     try {
-      const streamerId = this.config.streamerUser?.id || this.streamerClient?.user?.id;
-      if (!streamerId) return;
-
-      const detected = await detectProfileStreamingBadge(streamerId, this.config.STREAMER_TOKEN);
-      if (detected) {
-        const minSecondsForTier = detected.hours * 3600;
-
-        if (this.stats.totalSeconds < minSecondsForTier) {
-          this.stats.totalSeconds = minSecondsForTier;
-          this.stats.lastBadgeTier = detected.tier;
-          saveStats(this.stats);
-          this.dashboard.setStats(this.stats.totalSeconds, this.sessionFarmedSeconds);
-          this.dashboard.addLog(`Profile sync: ${detected.name} badge detected (${detected.hours}h)`, "success");
+      for (const streamer of this.streamers) {
+        const detected = await detectProfileStreamingBadge(streamer.id, streamer.token);
+        if (detected) {
+          const minSeconds = detected.hours * 3600;
+          if (streamer.stats.totalSeconds < minSeconds) {
+            streamer.stats.totalSeconds = minSeconds;
+            streamer.stats.lastBadgeTier = detected.tier;
+            saveStats(this.statsData);
+            this.dashboard.addLog(`Profile sync: ${streamer.user.username} -> ${detected.name} (${detected.hours}h)`, "success");
+          }
         }
       }
+      this.syncDashboardStreamers();
     } catch {}
   }
 
-  async startBroadcastLoop(videoPath) {
-    if (!this.isRunning || this.isStartingBroadcast) return;
-    this.isStartingBroadcast = true;
+  async startStreamerBroadcast(streamer) {
+    if (!this.isRunning || streamer.isStartingBroadcast) return;
+    streamer.isStartingBroadcast = true;
 
     const { GUILD_ID, CHANNEL_ID, FPS, BITRATE_KBPS } = this.config;
 
     try {
-      if (this.streamReconnectTimer) {
-        clearTimeout(this.streamReconnectTimer);
-        this.streamReconnectTimer = null;
+      if (streamer.reconnectTimer) {
+        clearTimeout(streamer.reconnectTimer);
+        streamer.reconnectTimer = null;
       }
 
-      if (this.streamCancelController) {
-        this.streamCancelController.abort();
+      if (streamer.streamCancelController) {
+        streamer.streamCancelController.abort();
       }
       try {
-        this.streamer?.stopStream();
+        streamer.streamer?.stopStream();
       } catch {}
 
-      this.dashboard.setStreamerStatus("Joining channel...");
-      await this.streamer.joinVoice(GUILD_ID, CHANNEL_ID);
+      streamer.status = "Joining channel...";
+      this.syncDashboardStreamers();
 
-      this.isStreaming = true;
-      this.isStartingBroadcast = false;
-      this.dashboard.setStreamerStatus("Broadcasting");
+      await streamer.streamer.joinVoice(GUILD_ID, CHANNEL_ID);
 
-      const streamMedia = prepareStream(videoPath, {
+      streamer.isStreaming = true;
+      streamer.isStartingBroadcast = false;
+      streamer.status = "Broadcasting";
+      this.syncDashboardStreamers();
+
+      const streamMedia = prepareStream(this.dummyVideoPath, {
         videoCodec: "H264",
         bitrateVideo: BITRATE_KBPS || 20,
         bitrateVideoMax: (BITRATE_KBPS || 20) + 15,
@@ -202,31 +239,33 @@ export class StreamEngine {
         customInputOptions: ["-stream_loop", "-1"],
       });
 
-      this.streamCancelController = new AbortController();
-      this.dashboard.addLog("Stream broadcast active", "success");
+      streamer.streamCancelController = new AbortController();
+      this.dashboard.addLog(`Stream active: ${streamer.user.username}`, "success");
       this.triggerViewerWatch();
 
       await playStream(
         streamMedia.output,
-        this.streamer,
+        streamer.streamer,
         {
           type: "go-live",
           width: 320,
           height: 240,
           frameRate: FPS || 1,
         },
-        this.streamCancelController.signal
+        streamer.streamCancelController.signal
       );
     } catch (err) {
-      this.isStartingBroadcast = false;
-      this.isStreaming = false;
+      streamer.isStartingBroadcast = false;
+      streamer.isStreaming = false;
 
-      const wasAborted = this.streamCancelController?.signal?.aborted;
+      const wasAborted = streamer.streamCancelController?.signal?.aborted;
       if (!wasAborted && this.isRunning) {
-        this.dashboard.addLog(`Stream error: ${err.message}`, "warn");
-        this.dashboard.setStreamerStatus("Reconnecting...");
-        this.scheduleStreamReconnect(10000);
+        this.dashboard.addLog(`Stream error (${streamer.user.username}): ${err.message}`, "warn");
+        streamer.status = "Reconnecting...";
+        this.syncDashboardStreamers();
+        this.scheduleStreamerReconnect(streamer, 10000);
       }
+      this.triggerViewerWatch();
     }
   }
 
@@ -258,18 +297,21 @@ export class StreamEngine {
 
       if (this.viewerHeartbeatTimer) clearInterval(this.viewerHeartbeatTimer);
       this.viewerHeartbeatTimer = setInterval(() => {
-        if (this.isRunning && this.isStreaming) {
-          this.viewerClient.ws.broadcast({
-            op: GatewayOpCodes.VOICE_STATE_UPDATE,
-            d: {
-              guild_id: GUILD_ID,
-              channel_id: CHANNEL_ID,
-              self_mute: true,
-              self_deaf: true,
-              self_video: false,
-            },
-          });
-          this.triggerViewerWatch();
+        if (this.isRunning) {
+          const activeCount = this.streamers.filter((s) => s.isStreaming).length;
+          if (activeCount > 0) {
+            this.viewerClient.ws.broadcast({
+              op: GatewayOpCodes.VOICE_STATE_UPDATE,
+              d: {
+                guild_id: GUILD_ID,
+                channel_id: CHANNEL_ID,
+                self_mute: true,
+                self_deaf: true,
+                self_video: false,
+              },
+            });
+            this.triggerViewerWatch();
+          }
         }
       }, 30000);
     } catch (err) {
@@ -282,34 +324,38 @@ export class StreamEngine {
   }
 
   triggerViewerWatch() {
-    if (!this.streamerClient.user) return;
+    const activeStreamers = this.streamers.filter((s) => s.isStreaming && s.client.user);
+    if (activeStreamers.length === 0) {
+      this.dashboard.setViewerStatus("Idle (Waiting for streams)");
+      return;
+    }
 
     const { GUILD_ID, CHANNEL_ID } = this.config;
-    const streamerId = this.streamerClient.user.id;
-    const streamKey = `guild:${GUILD_ID}:${CHANNEL_ID}:${streamerId}`;
 
-    this.viewerClient.ws.broadcast({
-      op: GatewayOpCodes.STREAM_WATCH,
-      d: {
-        stream_key: streamKey,
-      },
-    });
+    for (const streamer of activeStreamers) {
+      const streamKey = `guild:${GUILD_ID}:${CHANNEL_ID}:${streamer.user.id}`;
+      this.viewerClient.ws.broadcast({
+        op: GatewayOpCodes.STREAM_WATCH,
+        d: {
+          stream_key: streamKey,
+        },
+      });
+    }
 
-    this.dashboard.setViewerStatus("Watching (1 viewer)");
+    const count = activeStreamers.length;
+    this.dashboard.setViewerStatus(`Watching (${count} stream${count > 1 ? "s" : ""})`);
   }
 
   stop() {
     this.isRunning = false;
-    this.isStreaming = false;
-    this.isStartingBroadcast = false;
 
-    if (this.streamReconnectTimer) {
-      clearTimeout(this.streamReconnectTimer);
-      this.streamReconnectTimer = null;
-    }
     if (this.viewerReconnectTimer) {
       clearTimeout(this.viewerReconnectTimer);
       this.viewerReconnectTimer = null;
+    }
+    if (this.viewerHeartbeatTimer) {
+      clearInterval(this.viewerHeartbeatTimer);
+      this.viewerHeartbeatTimer = null;
     }
     if (this.statsSaveTimer) {
       clearInterval(this.statsSaveTimer);
@@ -319,28 +365,34 @@ export class StreamEngine {
       clearInterval(this.profileCheckTimer);
       this.profileCheckTimer = null;
     }
-    if (this.viewerHeartbeatTimer) {
-      clearInterval(this.viewerHeartbeatTimer);
-      this.viewerHeartbeatTimer = null;
+
+    if (this.statsData) {
+      saveStats(this.statsData);
     }
 
-    if (this.stats) {
-      saveStats(this.stats);
-    }
+    for (const streamer of this.streamers) {
+      streamer.isStreaming = false;
+      streamer.isStartingBroadcast = false;
 
-    if (this.streamCancelController) {
+      if (streamer.reconnectTimer) {
+        clearTimeout(streamer.reconnectTimer);
+        streamer.reconnectTimer = null;
+      }
+      if (streamer.streamCancelController) {
+        try {
+          streamer.streamCancelController.abort();
+        } catch {}
+      }
       try {
-        this.streamCancelController.abort();
+        streamer.streamer?.stopStream();
+        streamer.streamer?.leaveVoice();
+      } catch {}
+      try {
+        streamer.client.destroy();
       } catch {}
     }
 
     try {
-      this.streamer?.stopStream();
-      this.streamer?.leaveVoice();
-    } catch {}
-
-    try {
-      this.streamerClient.destroy();
       this.viewerClient.destroy();
     } catch {}
   }

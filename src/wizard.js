@@ -34,7 +34,9 @@ export async function runSetupWizard() {
     boxen(
       chalk.bold.cyan(" Setup Wizard ") +
         "\n\n" +
-        chalk.white("No configuration found. Please enter your credentials below."),
+        chalk.white("No valid configuration found. Enter your credentials below.") +
+        "\n" +
+        chalk.gray("Tip: For multiple streamer accounts, paste tokens separated by commas."),
       {
         padding: 1,
         margin: 1,
@@ -47,14 +49,14 @@ export async function runSetupWizard() {
   const questions = [
     {
       type: "password",
-      name: "streamerToken",
-      message: chalk.green("STREAMER Token (Main):"),
+      name: "streamerTokens",
+      message: chalk.green("STREAMER Token(s) (Main accounts, comma-separated if multiple):"),
       validate: (value) => (value && value.trim().length > 20 ? true : "Invalid Discord token."),
     },
     {
       type: "password",
       name: "viewerToken",
-      message: chalk.magenta("VIEWER Token (Alt):"),
+      message: chalk.magenta("VIEWER Token (Alt account):"),
       validate: (value) => (value && value.trim().length > 20 ? true : "Invalid Discord token."),
     },
     {
@@ -73,36 +75,59 @@ export async function runSetupWizard() {
 
   const response = await prompts(questions);
 
-  if (!response.streamerToken || !response.viewerToken || !response.guildId || !response.channelId) {
+  if (!response.streamerTokens || !response.viewerToken || !response.guildId || !response.channelId) {
     console.log(chalk.red("\nSetup aborted. Required fields were not provided."));
+    process.exit(1);
+  }
+
+  const rawTokens = response.streamerTokens
+    .split(/[,;\n]/)
+    .map((t) => t.trim())
+    .filter((t) => t.length > 0);
+
+  const uniqueStreamerTokens = [...new Set(rawTokens)];
+
+  if (uniqueStreamerTokens.length === 0) {
+    console.log(chalk.red("\nNo valid streamer tokens provided."));
     process.exit(1);
   }
 
   const spinner = ora("Verifying tokens...").start();
 
-  const [streamerUser, viewerUser] = await Promise.all([
-    verifyDiscordToken(response.streamerToken),
+  const [streamerUsers, viewerUser] = await Promise.all([
+    Promise.all(uniqueStreamerTokens.map((token) => verifyDiscordToken(token))),
     verifyDiscordToken(response.viewerToken),
   ]);
 
-  if (!streamerUser) {
-    spinner.fail(chalk.red("Invalid Streamer token."));
+  const invalidIndices = streamerUsers
+    .map((u, i) => (u ? null : i + 1))
+    .filter((i) => i !== null);
+
+  if (invalidIndices.length > 0) {
+    spinner.fail(chalk.red(`Streamer token #${invalidIndices.join(", #")} is invalid.`));
     process.exit(1);
   }
 
   if (!viewerUser) {
-    spinner.fail(chalk.red("Invalid Viewer token."));
+    spinner.fail(chalk.red("Viewer token is invalid."));
+    process.exit(1);
+  }
+
+  if (streamerUsers.some((u) => u.id === viewerUser.id)) {
+    spinner.fail(chalk.red("Viewer account cannot be one of the Streamer accounts. Use a separate alt account."));
     process.exit(1);
   }
 
   spinner.succeed(
     chalk.green(
-      `Verified accounts:\n  - Streamer: ${chalk.bold(streamerUser.username)} (${streamerUser.id})\n  - Viewer:   ${chalk.bold(viewerUser.username)} (${viewerUser.id})`
+      `Verified accounts:\n` +
+        streamerUsers.map((u, i) => `  - Streamer [${i + 1}]: ${chalk.bold(u.username)} (${u.id})`).join("\n") +
+        `\n  - Viewer:        ${chalk.bold(viewerUser.username)} (${viewerUser.id})`
     )
   );
 
   const envContent = [
-    `STREAMER_TOKEN=${response.streamerToken.trim()}`,
+    `STREAMER_TOKENS=${uniqueStreamerTokens.join(",")}`,
     `VIEWER_TOKEN=${response.viewerToken.trim()}`,
     `GUILD_ID=${response.guildId.trim()}`,
     `CHANNEL_ID=${response.channelId.trim()}`,
@@ -115,13 +140,16 @@ export async function runSetupWizard() {
   console.log(chalk.green(`\nSaved configuration to .env\n`));
 
   return {
-    STREAMER_TOKEN: response.streamerToken.trim(),
+    STREAMER_TOKENS: uniqueStreamerTokens.join(","),
+    streamers: uniqueStreamerTokens.map((token, i) => ({
+      token,
+      user: streamerUsers[i],
+    })),
     VIEWER_TOKEN: response.viewerToken.trim(),
+    viewerUser,
     GUILD_ID: response.guildId.trim(),
     CHANNEL_ID: response.channelId.trim(),
     FPS: 1,
     BITRATE_KBPS: 50,
-    streamerUser,
-    viewerUser,
   };
 }
