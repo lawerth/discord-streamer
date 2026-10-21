@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/banner.png" alt="Discord Streamer" width="70%">
+  <img src="assets/banner.png" alt="Discord Streamer" width="100%">
 </p>
 
 <div align="center">
