@@ -1,5 +1,5 @@
 {
-  "name": "discord-stream-farm",
+  "name": "discord-streamer",
   "version": "1.0.0",
   "description": "Automated Discord Streaming Badge milestone booster",
   "main": "src/index.js",
@@ -10,7 +10,7 @@
   "keywords": [
     "discord",
     "badge",
-    "stream-farm",
+    "streamer",
     "discord-badge",
     "selfbot",
     "webrtc"

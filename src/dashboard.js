@@ -86,7 +86,7 @@ export class Dashboard {
     const progressBar = createProgressBar(progress.progressPercent, 28);
 
     const content = [
-      chalk.bold(gradient.morning("  === DISCORD STREAM BADGE FARMER ===  ")),
+      chalk.bold(gradient.morning("  === DISCORD STREAMER ===  ")),
       "",
       chalk.bold(" Accounts:"),
       `  Streamer : ${chalk.bold.green(this.config.streamerUser?.username || "Streamer")} -> ${this.streamerStatus}`,
