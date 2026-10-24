@@ -35,14 +35,15 @@ Discord features progressive **Activity Badges** that dynamically evolve on user
 | 10 | <img src="assets/badges/10_phenomenon.png" width="24" height="24" valign="middle" /> **Phenomenon** | **5,000+ Hours** |
 
 > [!NOTE]
-> **Audience Requirement:** Discord only counts hours when someone is actively watching your broadcast. Streaming in an empty voice channel does **not** count. **Discord Streamer** solves this by pairing your streamer with an automated **Viewer (Alt)** account that maintains a real-time Gateway stream subscription (`STREAM_WATCH` Opcode 20).
+> **Audience Requirement:** Discord only counts hours when someone is actively watching your broadcast. Streaming in an empty voice channel does **not** count. **Discord Streamer** solves this by pairing your streamer with an automated **Viewer (Alt)** account that maintains a full WebRTC voice connection and real-time RTC media stream subscription (Gateway `STREAM_WATCH` Opcode 20 + stream RTC socket `IDENTIFY`), ensuring Discord's media servers register a genuine active viewer.
 
 ---
 
 ## ✨ Features
 
-- **⚡ Ultra-Low Resource Usage:** Broadcasts an optimized 1 FPS / 15 kbps dummy video loop. Uses less than **0.1% CPU** per streamer and negligible bandwidth, making it ideal for 24/7 hosting on the cheapest 512MB VPS.
-- **👥 Multi-Streamer & Audience Emulation:** Farm multiple accounts simultaneously! A single viewer account watches all streamers in the voice channel using Discord's native Multistream protocol, boosting all badges at once.
+- **⚡ Ultra-Low Resource Usage:** Broadcasts an optimized 10 FPS dynamic video loop with a stereo audio track (~150 kbps). Uses less than **1% CPU** per streamer and minimal bandwidth, making it ideal for 24/7 hosting on the cheapest VPS.
+- **📡 Built-in Science & Telemetry Engine:** Automatically simulates official Discord desktop client analytics (`media_session_joined`, `video_stream_started`, periodic `video_stream_heartbeat`, and `video_stream_ended`) to `/api/v9/science` with authentic desktop super-properties, ensuring hours are processed by Discord's activity badge pipeline.
+- **👥 Multi-Streamer & Active Audience Emulation:** Farm multiple accounts simultaneously! A single viewer account joins via WebRTC and actively watches all streamers in the voice channel, boosting all badges at once.
 - **🛡️ Self-Healing Auto-Reconnect:** Instantly recovers and rejoins if any account gets disconnected, moved, or kicked from the voice channel.
 - **💻 Live CLI Dashboard:** Clean terminal UI displaying per-streamer uptime, accumulated hours, current badge tiers, and live progress bars toward milestones.
 - **💾 Smart Persistence & Profile Sync:** Saves farmed time locally and checks your Discord profile to keep stats synchronized across sessions and reboots.

@@ -78,7 +78,7 @@ export async function loadConfig() {
     viewerUser,
     GUILD_ID: GUILD_ID.trim(),
     CHANNEL_ID: CHANNEL_ID.trim(),
-    FPS: parseInt(FPS || "1", 10),
-    BITRATE_KBPS: parseInt(BITRATE_KBPS || "50", 10),
+    FPS: parseInt(FPS || "10", 10),
+    BITRATE_KBPS: parseInt(BITRATE_KBPS || "150", 10),
   };
 }

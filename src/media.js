@@ -35,7 +35,7 @@ export async function ensureDummyMedia() {
 
   const dummyVideoPath = path.join(assetsDir, "dummy_stream.mp4");
 
-  if (fs.existsSync(dummyVideoPath) && fs.statSync(dummyVideoPath).size > 0) {
+  if (fs.existsSync(dummyVideoPath) && fs.statSync(dummyVideoPath).size > 50000) {
     return dummyVideoPath;
   }
 
@@ -44,7 +44,7 @@ export async function ensureDummyMedia() {
     "-f",
     "lavfi",
     "-i",
-    "color=c=black:s=320x240:r=1",
+    "testsrc=duration=5:size=480x270:rate=10",
     "-f",
     "lavfi",
     "-i",
@@ -55,16 +55,14 @@ export async function ensureDummyMedia() {
     "libx264",
     "-preset",
     "ultrafast",
-    "-tune",
-    "stillimage",
     "-pix_fmt",
     "yuv420p",
     "-b:v",
-    "15k",
+    "150k",
     "-c:a",
     "aac",
     "-b:a",
-    "16k",
+    "64k",
     dummyVideoPath,
   ];
 

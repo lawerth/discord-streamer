@@ -31,7 +31,7 @@ export class Dashboard {
   constructor(config) {
     this.config = config;
     this.viewerStatus = "Connecting...";
-    this.streamQuality = `${config.FPS || 1} FPS / ${config.BITRATE_KBPS || 50} kbps`;
+    this.streamQuality = `${config.FPS || 10} FPS / ${config.BITRATE_KBPS || 150} kbps`;
     this.logs = [];
     this.maxLogs = 4;
 

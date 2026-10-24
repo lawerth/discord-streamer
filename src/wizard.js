@@ -149,7 +149,7 @@ export async function runSetupWizard() {
     viewerUser,
     GUILD_ID: response.guildId.trim(),
     CHANNEL_ID: response.channelId.trim(),
-    FPS: 1,
-    BITRATE_KBPS: 50,
+    FPS: 10,
+    BITRATE_KBPS: 150,
   };
 }

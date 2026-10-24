@@ -2,11 +2,8 @@ import { Client } from "discord.js-selfbot-v13";
 import { Streamer, prepareStream, playStream } from "@dank074/discord-video-stream";
 import { ensureDummyMedia, injectFFmpegPath } from "./media.js";
 import { loadStats, saveStats, detectProfileStreamingBadge } from "./storage.js";
-
-const GatewayOpCodes = {
-  VOICE_STATE_UPDATE: 4,
-  STREAM_WATCH: 20,
-};
+import { TelemetryService } from "./telemetry.js";
+import { WatcherManager } from "./watcher.js";
 
 export class StreamEngine {
   constructor(config, dashboard) {
@@ -14,6 +11,12 @@ export class StreamEngine {
     this.dashboard = dashboard;
 
     this.viewerClient = new Client({ checkUpdate: false });
+    this.viewerManager = new WatcherManager(
+      this.viewerClient,
+      config.GUILD_ID,
+      config.CHANNEL_ID,
+      dashboard
+    );
     this.statsData = loadStats();
 
     this.streamers = config.streamers.map((s) => {
@@ -30,6 +33,7 @@ export class StreamEngine {
         token: s.token,
         client: client,
         streamer: new Streamer(client),
+        telemetry: new TelemetryService(s.token, s.user),
         isStreaming: false,
         isStartingBroadcast: false,
         streamCancelController: null,
@@ -42,7 +46,6 @@ export class StreamEngine {
 
     this.isRunning = false;
     this.viewerReconnectTimer = null;
-    this.viewerHeartbeatTimer = null;
     this.statsSaveTimer = null;
     this.profileCheckTimer = null;
     this.dummyVideoPath = null;
@@ -80,6 +83,8 @@ export class StreamEngine {
 
     this.dummyVideoPath = await ensureDummyMedia();
     await this.checkAllProfileBadges();
+
+    await Promise.all(this.streamers.map((s) => s.telemetry.init()));
 
     for (const streamer of this.streamers) {
       streamer.client.on("ready", async () => {
@@ -216,6 +221,7 @@ export class StreamEngine {
       }
       try {
         streamer.streamer?.stopStream();
+        streamer.streamer?.leaveVoice();
       } catch {}
 
       streamer.status = "Joining channel...";
@@ -228,14 +234,19 @@ export class StreamEngine {
       streamer.status = "Broadcasting";
       this.syncDashboardStreamers();
 
+      await streamer.telemetry.onStreamStarted(GUILD_ID, CHANNEL_ID);
+
+      const effectiveFps = Math.max(FPS || 10, 5);
+      const effectiveBitrate = Math.max(BITRATE_KBPS || 150, 100);
+
       const streamMedia = prepareStream(this.dummyVideoPath, {
         videoCodec: "H264",
-        bitrateVideo: BITRATE_KBPS || 20,
-        bitrateVideoMax: (BITRATE_KBPS || 20) + 15,
-        frameRate: FPS || 1,
-        width: 320,
-        height: 240,
-        includeAudio: false,
+        bitrateVideo: effectiveBitrate,
+        bitrateVideoMax: effectiveBitrate + 50,
+        frameRate: effectiveFps,
+        width: 480,
+        height: 270,
+        includeAudio: true,
         customInputOptions: ["-stream_loop", "-1"],
       });
 
@@ -248,15 +259,22 @@ export class StreamEngine {
         streamer.streamer,
         {
           type: "go-live",
-          width: 320,
-          height: 240,
-          frameRate: FPS || 1,
+          width: 480,
+          height: 270,
+          frameRate: effectiveFps,
         },
         streamer.streamCancelController.signal
       );
     } catch (err) {
       streamer.isStartingBroadcast = false;
       streamer.isStreaming = false;
+
+      try {
+        await streamer.telemetry.onStreamEnded(GUILD_ID, CHANNEL_ID);
+      } catch {}
+
+      const streamKey = `guild:${GUILD_ID}:${CHANNEL_ID}:${streamer.user.id}`;
+      this.viewerManager.stopSession(streamKey);
 
       const wasAborted = streamer.streamCancelController?.signal?.aborted;
       if (!wasAborted && this.isRunning) {
@@ -271,7 +289,6 @@ export class StreamEngine {
 
   async startViewerWatcher() {
     if (!this.isRunning) return;
-    const { GUILD_ID, CHANNEL_ID } = this.config;
 
     try {
       if (this.viewerReconnectTimer) {
@@ -279,44 +296,11 @@ export class StreamEngine {
         this.viewerReconnectTimer = null;
       }
 
-      this.viewerClient.ws.broadcast({
-        op: GatewayOpCodes.VOICE_STATE_UPDATE,
-        d: {
-          guild_id: GUILD_ID,
-          channel_id: CHANNEL_ID,
-          self_mute: true,
-          self_deaf: true,
-          self_video: false,
-        },
-      });
-
-      this.dashboard.setViewerStatus("In channel");
-      this.dashboard.addLog("Viewer joined voice channel", "success");
-
+      await this.viewerManager.start();
       this.triggerViewerWatch();
-
-      if (this.viewerHeartbeatTimer) clearInterval(this.viewerHeartbeatTimer);
-      this.viewerHeartbeatTimer = setInterval(() => {
-        if (this.isRunning) {
-          const activeCount = this.streamers.filter((s) => s.isStreaming).length;
-          if (activeCount > 0) {
-            this.viewerClient.ws.broadcast({
-              op: GatewayOpCodes.VOICE_STATE_UPDATE,
-              d: {
-                guild_id: GUILD_ID,
-                channel_id: CHANNEL_ID,
-                self_mute: true,
-                self_deaf: true,
-                self_video: false,
-              },
-            });
-            this.triggerViewerWatch();
-          }
-        }
-      }, 30000);
     } catch (err) {
       if (this.isRunning) {
-        this.dashboard.addLog(`Viewer error: ${err.message}`, "warn");
+        this.dashboard.addLog(`Viewer voice error: ${err.message}`, "warn");
         this.dashboard.setViewerStatus("Reconnecting...");
         this.scheduleViewerReconnect(10000);
       }
@@ -326,7 +310,7 @@ export class StreamEngine {
   triggerViewerWatch() {
     const activeStreamers = this.streamers.filter((s) => s.isStreaming && s.client.user);
     if (activeStreamers.length === 0) {
-      this.dashboard.setViewerStatus("Idle (Waiting for streams)");
+      this.viewerManager.updateDashboardStatus();
       return;
     }
 
@@ -334,16 +318,8 @@ export class StreamEngine {
 
     for (const streamer of activeStreamers) {
       const streamKey = `guild:${GUILD_ID}:${CHANNEL_ID}:${streamer.user.id}`;
-      this.viewerClient.ws.broadcast({
-        op: GatewayOpCodes.STREAM_WATCH,
-        d: {
-          stream_key: streamKey,
-        },
-      });
+      this.viewerManager.watchStream(streamKey);
     }
-
-    const count = activeStreamers.length;
-    this.dashboard.setViewerStatus(`Watching (${count} stream${count > 1 ? "s" : ""})`);
   }
 
   stop() {
@@ -352,10 +328,6 @@ export class StreamEngine {
     if (this.viewerReconnectTimer) {
       clearTimeout(this.viewerReconnectTimer);
       this.viewerReconnectTimer = null;
-    }
-    if (this.viewerHeartbeatTimer) {
-      clearInterval(this.viewerHeartbeatTimer);
-      this.viewerHeartbeatTimer = null;
     }
     if (this.statsSaveTimer) {
       clearInterval(this.statsSaveTimer);
@@ -370,9 +342,15 @@ export class StreamEngine {
       saveStats(this.statsData);
     }
 
+    this.viewerManager.stop();
+
     for (const streamer of this.streamers) {
       streamer.isStreaming = false;
       streamer.isStartingBroadcast = false;
+
+      try {
+        streamer.telemetry.onStreamEnded(this.config.GUILD_ID, this.config.CHANNEL_ID);
+      } catch {}
 
       if (streamer.reconnectTimer) {
         clearTimeout(streamer.reconnectTimer);
