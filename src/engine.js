@@ -1,4 +1,4 @@
-import { Client } from "discord.js-selfbot-v13";
+import { Client } from "@lng2004/discord.js-selfbot-v13";
 import { Streamer, prepareStream, playStream } from "@dank074/discord-video-stream";
 import { ensureDummyMedia, injectFFmpegPath } from "./media.js";
 import { loadStats, saveStats, detectProfileStreamingBadge } from "./storage.js";
@@ -251,13 +251,6 @@ export class StreamEngine {
 
       await streamer.streamer.joinVoice(GUILD_ID, CHANNEL_ID);
 
-      streamer.isStreaming = true;
-      streamer.isStartingBroadcast = false;
-      streamer.status = "Broadcasting";
-      this.syncDashboardStreamers();
-
-      await streamer.telemetry.onStreamStarted(GUILD_ID, CHANNEL_ID);
-
       const effectiveFps = Math.max(FPS || 10, 5);
       const effectiveBitrate = Math.max(BITRATE_KBPS || 150, 100);
 
@@ -273,6 +266,12 @@ export class StreamEngine {
       });
 
       streamer.streamCancelController = new AbortController();
+      streamer.isStreaming = true;
+      streamer.isStartingBroadcast = false;
+      streamer.status = "Broadcasting";
+      this.syncDashboardStreamers();
+
+      await streamer.telemetry.onStreamStarted(GUILD_ID, CHANNEL_ID);
       this.dashboard.addLog(`Stream active: ${streamer.user.username}`, "success");
       this.triggerViewerWatch();
 
