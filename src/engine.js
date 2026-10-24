@@ -48,6 +48,7 @@ export class StreamEngine {
     this.viewerReconnectTimer = null;
     this.statsSaveTimer = null;
     this.profileCheckTimer = null;
+    this.streamWatchdogTimer = null;
     this.dummyVideoPath = null;
 
     this.syncDashboardStreamers();
@@ -145,6 +146,27 @@ export class StreamEngine {
         await this.checkAllProfileBadges();
       }
     }, 5 * 60 * 1000);
+
+    this.streamWatchdogTimer = setInterval(() => {
+      if (!this.isRunning) return;
+
+      for (const streamer of this.streamers) {
+        if (streamer.isStreaming && !streamer.isStartingBroadcast && !streamer.reconnectTimer) {
+          const streamConn = streamer.streamer?.voiceConnection?.streamConnection;
+          const isStreamDead = !streamConn || (streamConn.ws && streamConn.ws.readyState > 1);
+          const isVoiceDead = !streamer.streamer?.voiceConnection || streamer.streamer?.voiceConnection?.status?.started === false;
+
+          if (isStreamDead || isVoiceDead) {
+            this.dashboard.addLog(`Stream watchdog: ${streamer.user.username} stream stalled! Recovering...`, "warn");
+            streamer.isStreaming = false;
+            if (streamer.streamCancelController) {
+              streamer.streamCancelController.abort();
+            }
+            this.scheduleStreamerReconnect(streamer, 2000);
+          }
+        }
+      }
+    }, 10000);
 
     const logins = [
       ...this.streamers.map((s) => s.client.login(s.token)),
@@ -265,6 +287,19 @@ export class StreamEngine {
         },
         streamer.streamCancelController.signal
       );
+
+      streamer.isStreaming = false;
+      const wasAborted = streamer.streamCancelController?.signal?.aborted;
+      if (!wasAborted && this.isRunning) {
+        this.dashboard.addLog(`Stream cycle completed (${streamer.user.username}). Restarting...`, "info");
+        try {
+          await streamer.telemetry.onStreamEnded(GUILD_ID, CHANNEL_ID);
+        } catch {}
+        const streamKey = `guild:${GUILD_ID}:${CHANNEL_ID}:${streamer.user.id}`;
+        this.viewerManager.stopSession(streamKey);
+
+        this.scheduleStreamerReconnect(streamer, 2000);
+      }
     } catch (err) {
       streamer.isStartingBroadcast = false;
       streamer.isStreaming = false;
@@ -336,6 +371,10 @@ export class StreamEngine {
     if (this.profileCheckTimer) {
       clearInterval(this.profileCheckTimer);
       this.profileCheckTimer = null;
+    }
+    if (this.streamWatchdogTimer) {
+      clearInterval(this.streamWatchdogTimer);
+      this.streamWatchdogTimer = null;
     }
 
     if (this.statsData) {
