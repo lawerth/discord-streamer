@@ -166,6 +166,12 @@ export class StreamEngine {
           }
         }
       }
+
+      const activeStreamers = this.streamers.filter((s) => s.isStreaming && s.client.user);
+      const watchingCount = this.viewerManager.getWatchingCount();
+      if (activeStreamers.length > 0 && watchingCount < activeStreamers.length) {
+        this.triggerViewerWatch();
+      }
     }, 10000);
 
     const logins = [
@@ -241,6 +247,9 @@ export class StreamEngine {
       if (streamer.streamCancelController) {
         streamer.streamCancelController.abort();
       }
+
+      streamer.streamCancelController = null;
+
       try {
         streamer.streamer?.stopStream();
         streamer.streamer?.leaveVoice();
@@ -249,7 +258,13 @@ export class StreamEngine {
       streamer.status = "Joining channel...";
       this.syncDashboardStreamers();
 
-      await streamer.streamer.joinVoice(GUILD_ID, CHANNEL_ID);
+      const joinTimeout = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("Voice join timed out after 20s")), 20000)
+      );
+      await Promise.race([
+        streamer.streamer.joinVoice(GUILD_ID, CHANNEL_ID),
+        joinTimeout,
+      ]);
 
       const effectiveFps = Math.max(FPS || 10, 5);
       const effectiveBitrate = Math.max(BITRATE_KBPS || 150, 100);

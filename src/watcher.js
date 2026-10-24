@@ -161,11 +161,14 @@ export class WatcherManager {
         this.pendingData.set(stream_key, entry);
         this.checkAndConnectSession(stream_key);
       } else if (packet.t === "STREAM_SERVER_UPDATE") {
-        const { stream_key, endpoint, token } = packet.d || {};
+        const { stream_key, endpoint, token, rtc_server_id } = packet.d || {};
         if (!stream_key) return;
         const entry = this.pendingData.get(stream_key) || {};
         entry.endpoint = endpoint;
         entry.token = token;
+        if (rtc_server_id) {
+          entry.rtcServerId = rtc_server_id;
+        }
         this.pendingData.set(stream_key, entry);
         this.checkAndConnectSession(stream_key);
       } else if (packet.t === "STREAM_DELETE") {
@@ -198,8 +201,13 @@ export class WatcherManager {
   checkAndConnectSession(streamKey) {
     if (!this.isRunning) return;
     const data = this.pendingData.get(streamKey);
-    if (!data || !data.rtcServerId || !data.endpoint || !data.token) return;
+    if (!data || !data.endpoint || !data.token) return;
     if (this.activeSessions.has(streamKey)) return;
+
+    const rtcServerId = data.rtcServerId
+      || this.streamer.voiceConnection?.streamConnection?.serverId
+      || this.guildId;
+    if (!rtcServerId) return;
 
     const sessionId = this.sessionId || this.streamer.voiceConnection?.session_id;
     if (!sessionId || !this.client.user) return;
@@ -208,7 +216,7 @@ export class WatcherManager {
       streamKey,
       endpoint: data.endpoint,
       token: data.token,
-      rtcServerId: data.rtcServerId,
+      rtcServerId,
       userId: this.client.user.id,
       sessionId,
       onReady: (key) => {
@@ -237,6 +245,15 @@ export class WatcherManager {
 
   watchStream(streamKey) {
     if (!this.isRunning) return;
+
+    if (!this.streamer.voiceConnection || !this.streamer.voiceConnection.status?.started) {
+      this.dashboard?.addLog("Viewer not in voice yet, deferring stream watch...", "warn");
+      return;
+    }
+
+    if (this.activeSessions.has(streamKey) && this.activeSessions.get(streamKey).isReady) {
+      return;
+    }
     this.client.ws.broadcast({
       op: 20,
       d: {
@@ -264,6 +281,10 @@ export class WatcherManager {
     } else {
       this.dashboard?.setViewerStatus("In channel (Waiting for streams)");
     }
+  }
+
+  getWatchingCount() {
+    return Array.from(this.activeSessions.values()).filter((s) => s.isReady).length;
   }
 
   stop() {
